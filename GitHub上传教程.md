@@ -88,3 +88,11 @@ git pull origin master
 git checkout fileName   # 撤销命令，先从暂存区恢复文件，如果没有，从版本库恢复内容(工作区就是还没有add的时候						的操作，暂存区就是已经调用了git add操作之后的区域，版本库就是git commit之后的区域)
 ```
 
+### 3.4 删除本地文件，从远程仓库获取
+
+```shell
+git fetch --all        #拉取远程仓库不合并
+git reset --hard origin/master   #
+git pull origin master   #拉取远程内容到本地仓库
+```
+
