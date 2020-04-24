@@ -293,12 +293,104 @@ public class OrderConsumer {
 ### 3.2 分布式事务
 
 - 事务是指单个逻辑单元执行 的一系列操作要么全部执行，要么全部不执行
+
 - 分布式事务：事务的参与者、支持事务的服务器、资源服务器以及事务管理器分别位于不同的分布式系统的不同节点之上，从本质上来讲，分布式事务就是为了保证不同数据库的数据一致性
 	- 基于单个JVM，数据库分库分表了(包含多个数据库)
 	- 基于多个JVM，服务拆分了(不跨数据库)，目前系统的设计都越来越服务化，包含的模块增多，也会设计到分布式事务，例如：用户的积分和优惠券可能由不同的团队管理，积分增加，优惠券应该减少，积分和优惠券就应该是不同的服务
 	- 基于多个JVM，服务拆分了并且数据库也分库分表了
-- 原理
-	- 
+	
+- MQ解决分布式事务的原理
+	
+	- A(存在DB操作)，B(存在DB操作)两方需要保证分布式事务一致性，通过引入中间层MQ，A和MQ保持事务的一致性(异常情况下通过MQ反查A接口实现check)，B和MQ保证事务一致(通过重试)，从而达到最终事务一致性，RocketMQ无法通过事务端发起服务器的回滚(例如订单系统已经支付成功，即使其他系统失败，订单也不会回滚)
+	- RocketMQ解决分布式事务的流程图
+	
+	<img src="D:\软件\typora\笔记\img\RocketMQ解决分布式事务.jpg" style="zoom:50%;" />
 
+```java
+// 流程说明
+1. 在扣款之前，先发送预备消息
+2. 发送预备消息成功后，执行本地扣款事务
+3. 扣款成功后，在发送确认消息(Commit或者Rollback)
+4. 消费端可以看到确认消息，消费此消息，进行加钱
+```
 
+- RocketMQ的回查
+	- 当本地事务执行成功，但是给MQ发送确认消息时失败时，MQ可以通过回调来判断本地事务的执行状态，如果成功就发送Commit，失败则Rollback
+	- Map(事务ID，事务状态)中保存了事务的状态，可以通过事务ID直接在表中直接查询事务的状态
+
+#### 3.2.1 事务生产者
+
+```java
+public class TransactionProducer {
+    public static void main(String[] args) throws MQClientException, UnsupportedEncodingException, InterruptedException {
+        TransactionMQProducer producer = new TransactionMQProducer("TransactionProducer");
+        producer.setNamesrvAddr("192.168.31.185:9876");
+        producer.setSendMsgTimeout(10000);
+        producer.setTransactionListener(new TransactionListenerImpl());
+        producer.start();
+
+        Message message = new Message("MyTopic", "用户A给用户B转账1000元".getBytes("UTF-8"));
+        producer.sendMessageInTransaction(message, null);
+
+        producer.shutdown();
+    }
+}
+```
+
+#### 3.2.2 事务回调实现类
+
+```java
+public class TransactionListenerImpl implements TransactionListener {
+
+    private static Map<String, LocalTransactionState> STATE_MAP = new HashMap<>();
+    //Producer通过回调调用TransactionListener的该方法
+    @Override
+    public LocalTransactionState executeLocalTransaction(Message message, Object o) {
+        try {
+            System.out.println("用户A账户减1000元");
+            Thread.sleep(1000);
+            System.out.println("用户B账户增加1000元");
+            Thread.sleep(1000);
+            STATE_MAP.put(message.getTransactionId(),
+                    LocalTransactionState.COMMIT_MESSAGE);
+            return LocalTransactionState.COMMIT_MESSAGE;
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            STATE_MAP.put(message.getTransactionId(),
+                    LocalTransactionState.ROLLBACK_MESSAGE);
+        }
+        return LocalTransactionState.ROLLBACK_MESSAGE;
+    }
+
+    //回查时通过该接口获取事务的执行状态
+    @Override
+    public LocalTransactionState checkLocalTransaction(MessageExt messageExt) {
+        return STATE_MAP.get(messageExt.getTransactionId());
+    }
+}
+```
+
+#### 3.2.3 消费者
+
+```java
+public class TransactionConsumer {
+    public static void main(String[] args) throws MQClientException {
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("ConsumerGroup");
+        consumer.setNamesrvAddr("192.168.31.185:9876");
+        consumer.subscribe("MyTopic", "*");
+        consumer.registerMessageListener((MessageListenerConcurrently) (list, consumeConcurrentlyContext) -> {
+            for (MessageExt messageExt : list) {
+                try {
+                    System.out.println(new String(messageExt.getBody(), "UTF-8"));
+                } catch (UnsupportedEncodingException e) {
+                    e.printStackTrace();
+                }
+            }
+            return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+        });
+
+        consumer.start();
+    }
+}
+```
 
