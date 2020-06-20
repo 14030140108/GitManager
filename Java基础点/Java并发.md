@@ -6,7 +6,7 @@
 
 #### 1.1.1 加锁
 
-![](D:\software\git\repository\GitManager\img\原理图解\Java并发\ReentrantLock原理.png)
+![]( [https://github.com/14030140108/GitManager/blob/master/img/%E5%8E%9F%E7%90%86%E5%9B%BE%E8%A7%A3/Java%E5%B9%B6%E5%8F%91/ReentrantLock%E5%8E%9F%E7%90%86.png](https://github.com/14030140108/GitManager/blob/master/img/原理图解/Java并发/ReentrantLock原理.png) )
 
 - 公平锁
 
