@@ -127,9 +127,9 @@ public class CustomLineDataFilter extends FilterBase {
 
      - empty：该方式打出的jar包中依赖的三方库是独立于自己的包结构的
 
-     <img src="D:\软件\typora\img\empty方式的jar包.png" style="zoom:50%;" />
+     <img src="D:\software\git\repository\GitManager\img\empty方式的jar包.png" style="zoom:50%;" />
 
      - from module with dependencies：依赖的库以包结构被打入jar包
 
-       ​    								  <img src="D:\软件\typora\img\from module方式的jar包.png" style="zoom:50%;" />
+       ​    								  <img src="D:\software\git\repository\GitManager\img\from module方式的jar包.png" style="zoom:50%;" />
 

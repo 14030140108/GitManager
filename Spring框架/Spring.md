@@ -82,6 +82,108 @@
   }
   ```
 
+## 二、应用
+
+### 2.1 Spring注入Date类型
+
+- Spring支持自定义属性编辑器(实现PropertyEditorSupport)，自定义属性编辑注册器(PropertyEditorRegistrar)，开发人员实现的上述类均放入CustomEditorConfigurer(该类实现了BeanFactoryPostProcessor)中，在spring的特定过程中通过执行BeanFactoryPostProcessor的postProcessorBeanFactory方法，将CustomEditorConfigurer中存储的上述两种自定义属性编辑器和注册器存储至BeanFactory中，当Spring在注入bean遇到类型不一致时，如果预期的类型和自定义属性编辑器中value的类型一直，便调用该编辑器完成属性格式的转换，并注入之前的bean中。
+
+- 实例工厂
+
+  ```java
+  //除了构造函数注入，也可以使用setter注入
+  public class DateBean {
+  	Date brithday;
+  
+  	public DateBean(Date brithday) {
+  		this.brithday = brithday;
+  	}
+  
+  	public Date getBrithday() {
+  		return brithday;
+  	}
+  }
+  ```
+
+  ```xml
+  //实例化一个SimpleDateFormat对象，传入构造参数的值
+  <bean id="simpleDateFormat" class="java.text.SimpleDateFormat">
+  		<constructor-arg value="yyyy-MM-dd"/>
+  </bean>
+  
+  //使用实例工厂的方法产生Date类型的bean并通过构造函数注入DateBean中
+  <bean id="dateBean" class="org.springframework.beans.DateBean">
+      <constructor-arg>
+          <bean factory-method="parse" factory-bean="simpleDateFormat">
+              <constructor-arg value="2015-11-12"/>
+          </bean>
+      </constructor-arg>
+  </bean>
+  ```
+
+  - 自定义Stirng到Date转换器
+
+    ```java
+    public class DatePropertyEditor extends PropertyEditorSupport {
+    
+    	private String format = "yyyy-MM-dd";
+        
+    	@Override
+    	public void setAsText(String text) throws IllegalArgumentException {
+    		try {
+    			this.setValue(new SimpleDateFormat(format).parse(text));
+    		} catch (ParseException e) {
+    			e.printStackTrace();
+    		}
+    	}
+    }
+    ```
+
+    ```xml
+    //将自定义实现的PropertyEditorSupport类注入CustomEditorConfigurer类的customEditors集合中
+    //注入map结合中的entry的value值是calss对象，无法使用bean注入，所以必须拥有默认构造函数
+    <bean class="org.springframework.beans.factory.config.CustomEditorConfigurer">
+        <property name="customEditors">
+            <map>
+                <entry key="java.util.Date" value="org.springframework.beans.DatePropertyEditor">
+                </entry>
+            </map>
+        </property>
+    </bean>
+    
+    <bean id="dateBean" class="org.springframework.beans.DateBean">
+        <constructor-arg value="2015-12-12"/>
+    </bean>
+    ```
+
+    - 实现PropertyEditorRegistrar接口，并重写registerCustomEditors方法，并将Spring自带的CustomDateEditor注入propertyEditorRegistrars
+
+      ```java
+      public class DatePropertyEditorRegistrar implements PropertyEditorRegistrar {
+      
+      	@Override
+      	public void registerCustomEditors(PropertyEditorRegistry registry) {
+      		registry.registerCustomEditor(Date.class, new CustomDateEditor(new SimpleDateFormat("yyyy-MM-dd"), true));
+      	}
+      }
+      ```
+
+      ```xml
+      <bean class="org.springframework.beans.factory.config.CustomEditorConfigurer">
+          <property name="propertyEditorRegistrars">
+              <list>
+                  <bean class="org.springframework.beans.DatePropertyEditorRegistrar"/>
+              </list>
+          </property>
+      </bean>
+      
+      <bean id="dateBean" class="org.springframework.beans.DateBean">
+          <constructor-arg value="2015-12-12"/>
+      </bean>
+      ```
+
+      
+
 # Spring源码分析
 
 ## 一、字段说明
@@ -168,6 +270,10 @@ public class MainApplication {
 ### 2.2 BeanFactory
 
 ### 2.3 AbstractApplicationContext
+
+### 2.4  Spring BeanPostProcessor
+
+- Spring在Bean的整个生命周期中在很多地方调用了后置处理器，其中包括Spring自己实现的后置处理器，以及开发人员实现的后置处理器
 
 ## 三、源码分析
 
@@ -307,5 +413,154 @@ protected Object getSingleton(String beanName, boolean allowEarlyReference) {
   	}
   ```
 
-  
+### 3.3 Spring自定义属性编辑器，原理解析
 
+- DateBean类需要注入一个Date格式的属性
+
+```java
+//DateBean中使用setter方法注入，所以string转换为Date的时间发生在属性注入
+//当使用构造函数注入时，String转换为Date的时间发生在反射创建bean之后，instantiateBean()函数调用之后
+public class DateBean {
+	Date brithday;
+
+	public void setBrithday(Date brithday) {
+		this.brithday = brithday;
+	}
+
+	public Date getBrithday() {
+		return brithday;
+	}
+}
+```
+
+- 两种方式实现
+
+```java
+// (1) 自定义属性编辑器
+public class DatePropertyEditor extends PropertyEditorSupport {
+
+	private String format = "yyyy-MM-dd";
+
+	public void setFormat(String format) {
+		this.format = format;
+	}
+
+	@Override
+	public void setAsText(String text) throws IllegalArgumentException {
+		try {
+			this.setValue(new SimpleDateFormat(format).parse(text));
+		} catch (ParseException e) {
+			e.printStackTrace();
+		}
+	}
+}
+
+// (2) 自定义属性编辑注册器
+public class DatePropertyEditorRegistrar implements PropertyEditorRegistrar {
+
+	@Override
+	public void registerCustomEditors(PropertyEditorRegistry registry) {
+		registry.registerCustomEditor(Date.class, new CustomDateEditor(new SimpleDateFormat("yyyy-MM-dd"), true));
+	}
+}
+
+```
+
+- 上面两种方式的bean会放入CustomEditorConfigurer的集合中，通过xml配置文件
+
+  ```xml
+  <bean class="org.springframework.beans.factory.config.CustomEditorConfigurer">
+      <property name="customEditors">
+          <map>
+              <entry key="java.util.Date" value="org.springframework.beans.DatePropertyEditor">
+              </entry>
+          </map>
+      </property>
+  </bean>
+  
+  <bean class="org.springframework.beans.factory.config.CustomEditorConfigurer">
+      <property name="propertyEditorRegistrars">
+          <list>
+              <bean class="org.springframework.beans.DatePropertyEditorRegistrar"/>
+          </list>
+      </property>
+  </bean>
+  ```
+
+- CustomEditorConfigurer实现了BeanFactoryPostProcessor接口
+
+  ```java
+  invokeBeanFactoryPostProcessors()    //在该接口中，会激活所有BeanFactory的后置处理器，其中CustomEditorConfigurer会将属性编辑注册器和属性编辑器这两个集合放入BeanFactory的集合中
+      
+  //CustomEditorConfigurer.java
+  @Override
+      public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
+      if (this.propertyEditorRegistrars != null) {
+          for (PropertyEditorRegistrar propertyEditorRegistrar : this.propertyEditorRegistrars) {
+              beanFactory.addPropertyEditorRegistrar(propertyEditorRegistrar);
+          }
+      }
+      if (this.customEditors != null) {
+          this.customEditors.forEach(beanFactory::registerCustomEditor);
+      }
+  }
+  ```
+
+- 在通过反射创建bean的过程中，会遍历BeanFactory中的两个集合， 并将类型转换器注入每个bean中,所有的类型转换器保存在PropertyEditorRegistrySupport中
+
+  ```java
+  //AbstractBeanFactroy.java
+  protected void registerCustomEditors(PropertyEditorRegistry registry) {
+      PropertyEditorRegistrySupport registrySupport =
+          (registry instanceof PropertyEditorRegistrySupport ? (PropertyEditorRegistrySupport) registry : null);
+      if (registrySupport != null) {
+          registrySupport.useConfigValueEditors();
+      }
+      if (!this.propertyEditorRegistrars.isEmpty()) {
+          //遍历所有属性编辑注册器，调用接口方法，该方法就是将指定的类型转换器注入bean对应的map中，bean在这里已经用BeanWrapperImpl包装过，而BeanWrapperImpl继承自PropertyEditorRegistrySupport，里面有个map用来存储类型转换器
+          for (PropertyEditorRegistrar registrar : this.propertyEditorRegistrars) {
+              try {
+                  registrar.registerCustomEditors(registry);
+              }
+              catch (BeanCreationException ex) {
+                  Throwable rootCause = ex.getMostSpecificCause();
+                  if (rootCause instanceof BeanCurrentlyInCreationException) {
+                      BeanCreationException bce = (BeanCreationException) rootCause;
+                      String bceBeanName = bce.getBeanName();
+                      if (bceBeanName != null && isCurrentlyInCreation(bceBeanName)) {
+                          if (logger.isDebugEnabled()) {
+                              logger.debug("PropertyEditorRegistrar [" + registrar.getClass().getName() +
+                                           "] failed because it tried to obtain currently created bean '" +
+                                           ex.getBeanName() + "': " + ex.getMessage());
+                          }
+                          onSuppressedException(ex);
+                          continue;
+                      }
+                  }
+                  throw ex;
+              }
+          }
+      }
+      //将集合中的类型转换器加入每个bean对应的map集合中
+      if (!this.customEditors.isEmpty()) {
+          this.customEditors.forEach((requiredType, editorClass) ->
+                                     registry.registerCustomEditor(requiredType, BeanUtils.instantiateClass(editorClass)));
+      }
+  }
+  ```
+
+  - 开始类型转换，本次实例代码采用setter方式注入，所以类型转换发生在属性注入期间
+
+    ```mermaid
+    graph TD
+    A[populateBean] --> B[applyPropertyValues]
+    	B[applyPropertyValues]  --> C[convertForProperty]
+    	C[convertForProperty]  --> D[...]
+    	D[...]  --> E[doConvertValue]
+    	E[doConvertValue] --> F[doConvertTextValue]
+    	F[doConvertTextValue] --> G[setAsText]
+    ```
+
+    
+
+    
