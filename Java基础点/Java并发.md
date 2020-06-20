@@ -4,7 +4,7 @@
 
 ### 1.1 ReentrantLock锁原理
 
-#### 1.1.1 加锁
+#### 1.1.1 加锁lock
 
 ![](D:\software\git\repository\GitManager\img\原理图解\Java并发\ReentrantLock原理.png)
 
@@ -88,7 +88,7 @@
 
   非公平锁的逻辑与公平锁的唯一区别在：当锁状态为自由状态时，公平锁需要判断当前线程是否需要入队，非公平锁直接CAS操作
 
-#### 1.1.2 解锁
+#### 1.1.2 解锁unlock
 
 公平锁和非公平锁的解锁操作是一样的
 
@@ -130,6 +130,39 @@ private void unparkSuccessor(Node node) {
         if (s != null)
             LockSupport.unpark(s.thread);
     }
+```
+
+#### 1.1.3 可中断锁lockInterruptibly
+
+```java
+/**该函数与acquireQueued的逻辑是一致的，区别在于：
+     *    1. acquireQueued中当不会直接抛出异常
+     *        - 该函数中直接抛出异常，此时线程中断标识为false(因为调用的是Thread.interrupted,会清除标志位)
+     *        - 因为lock函数中阻塞线程调用的也是parkAndCheckInterrupt函数，因为会清除标志位，所以为了兼容只能调用一次selfInterrupt函数来将标志位重新设置为true
+     *    2. 将addWaiter函数和acquireQueued函数进行了封装
+     */
+private void doAcquireInterruptibly(int arg)
+    throws InterruptedException {
+    final Node node = addWaiter(Node.EXCLUSIVE);
+    boolean failed = true;
+    try {
+        for (;;) {
+            final Node p = node.predecessor();
+            if (p == head && tryAcquire(arg)) {
+                setHead(node);
+                p.next = null; // help GC
+                failed = false;
+                return;
+            }
+            if (shouldParkAfterFailedAcquire(p, node) &&
+                parkAndCheckInterrupt())
+                throw new InterruptedException();
+        }
+    } finally {
+        if (failed)
+            cancelAcquire(node);
+    }
+}
 ```
 
 
