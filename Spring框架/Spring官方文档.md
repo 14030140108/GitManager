@@ -50,6 +50,8 @@ ApplicationContext提供了该接口的几种实现，通常使用ClassPathXmlAp
   
   </beans>
   ```
+  
+- 
 
 #### 1.2.2 实例化容器
 
@@ -349,4 +351,340 @@ public class SimpleMovieLister {
 }
 ```
 
- 
+### 1.9 基于注释的容器配置
+
+####  1.9.1 @Required
+
+```java
+public class SimpleMovieLister {
+
+    private MovieFinder movieFinder;
+
+    @Required
+    public void setMovieFinder(MovieFinder movieFinder) {
+        this.movieFinder = movieFinder;
+    }
+
+    // ...
+}
+//Spring Framework5.1开始正式弃用了@Required批注，使用构造函数注入或者bean实现InitializingBean.afterPropertiesSet()
+```
+
+#### 1.9.2 @Autowired
+
+```java
+public class MovieRecommender {
+
+    private final CustomerPreferenceDao customerPreferenceDao;
+
+    @Autowired
+    public MovieRecommender(CustomerPreferenceDao customerPreferenceDao) {
+        this.customerPreferenceDao = customerPreferenceDao;
+    }
+
+    // ...
+}
+```
+
+注：从Spring Framework4.3开始，@Autowired如果目标bean仅定义一个开始的构造函数，则不需要添加注释，但是如果有几个构造函数，并且没有默认的构造函数，则必须至少注释一个构造函数，@Autowired以指示容器使用哪个构造函数
+
+可以将@Autowired用于传统的setter方法，可以将注释应用于具有任意名称和多个参数的方法
+
+```java
+public class MovieRecommender {
+
+    private MovieCatalog movieCatalog;
+
+    private CustomerPreferenceDao customerPreferenceDao;
+
+    @Autowired
+    public void prepare(MovieCatalog movieCatalog,
+            CustomerPreferenceDao customerPreferenceDao) {
+        this.movieCatalog = movieCatalog;
+        this.customerPreferenceDao = customerPreferenceDao;
+    }
+
+    // ...
+}
+```
+
+可以将@Autowired应用于字段，甚至可以将其与构造函数混合使用
+
+注：如果希望数组的bean按照特定顺序排序，则目标bean可以实现该Ordered接口或使用@Order或标准@Priority注释
+
+从Spring Framework5.0开始，可以使用@Nullable注释
+
+```java
+public class SimpleMovieLister {
+
+    @Autowired
+    public void setMovieFinder(@Nullable MovieFinder movieFinder) {
+        ...
+    }
+}
+```
+
+
+
+ ### 1.12 基于Java的容器配置
+
+#### 1.12.1 基本概念@Bean和@Configuration
+
+@bean注释被用于指示一个方法实例，可以配置，并初始化到由SpringIOC容器进行管理的新对象
+
+@Configuration表明其主要目的是作为Bean定义的来源，@Configuration类允许通过调用@Bean同一类中的其他方法来定义Bean之间的依赖关系。
+
+```java
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public MyService myService() {
+        return new MyServiceImpl();
+    }
+}
+
+//等效于xml中以下配置
+<beans>
+    <bean id="myService" class="com.acme.services.MyServiceImpl"/>
+</beans>
+
+```
+
+#### 1.12.2 使用实例化Spring容器AnnotationConfigApplicationContext
+
+当实例化 ClassPathXmlApplicationContext 时使用Spring XML 文件，当实例化AnnotationConfigApplicationContext时可以用@Configuration作为输入
+
+```java
+public static void main(String[] args) {
+    //AppConfig.class中可以注册多个Bean
+    ApplicationContext ctx = new AnnotationConfigApplicationContext(AppConfig.class);
+    MyService myService = ctx.getBean(MyService.class);
+    myService.doStuff();
+}
+```
+
+**通过使用编程方式构建容器**
+
+可以通过AnnotationConfigApplicationContextde无参构造函数实例化，然后使用register方法进行配置
+
+```java
+public static void main(String[] args) {
+    AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
+    ctx.register(AppConfig.class, OtherConfig.class);
+    ctx.register(AdditionalConfig.class);
+    ctx.refresh();
+    MyService myService = ctx.getBean(MyService.class);
+    myService.doStuff();
+}
+```
+
+**使用组建扫描**
+
+```java
+@Configuration
+@ComponentScan(basePackages = "com.acme") 
+public class AppConfig  {
+    ...
+}
+
+<beans>
+    <context:component-scan base-package="com.acme"/>
+</beans>
+        
+public static void main(String[] args) {
+    AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
+    ctx.scan("com.acme");
+    ctx.refresh();
+    MyService myService = ctx.getBean(MyService.class);
+}   
+
+```
+
+**支持web应用程序**AnnotationConfigWebApplicationContext
+
+```xml
+web.xml
+<web-app>
+    <!--将WebApplicationContext作为参数传入ContextLoaderListener中 -->
+    <context-param>
+        <param-name>contextClass</param-name>
+        <param-value>
+            org.springframework.web.context.support.AnnotationConfigWebApplicationContext
+        </param-value>
+    </context-param>
+
+    <!-- 配置contextConfigLocation,WebApplicationContext将去指定的全限定类中注册bean -->
+    <context-param>
+        <param-name>contextConfigLocation</param-name>
+        <param-value>com.acme.AppConfig</param-value>
+    </context-param>
+
+    <!-- Bootstrap the root application context as usual using ContextLoaderListener -->
+    <listener>
+        <listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
+    </listener>
+
+    <!-- Declare a Spring MVC DispatcherServlet as usual -->
+    <servlet>
+        <servlet-name>dispatcher</servlet-name>
+        <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+        <!--配置DispatcherServlet中使用AnnotationConfigWebApplicationContext作为Web程序上下文 -->
+        <init-param>
+            <param-name>contextClass</param-name>
+            <param-value>
+                org.springframework.web.context.support.AnnotationConfigWebApplicationContext
+            </param-value>
+        </init-param>
+        <!-- Again, config locations must consist of one or more comma- or space-delimited
+            and fully-qualified @Configuration classes -->
+        <init-param>
+            <param-name>contextConfigLocation</param-name>
+            <param-value>com.acme.web.MvcConfig</param-value>
+        </init-param>
+    </servlet>
+
+    <!-- map all requests for /app/* to the dispatcher servlet -->
+    <servlet-mapping>
+        <servlet-name>dispatcher</servlet-name>
+        <url-pattern>/app/*</url-pattern>
+    </servlet-mapping>
+</web-app>
+```
+
+#### 1.12.3 使用@Bean注释
+
+@Bean是方法级别的注释，是XML<bean/>元素的直接模拟，注释支持所提供的一些属性：init-method、destroy-method
+
+可以使用@Bean注释在@Configuration或@Component类中
+
+**声明一个Bean**
+
+采用@Bean注解时，Bean定义的类型为方法返回值的类型，bean名称与方法名称相同，可以通过声明的服务接口引用类型
+
+```java
+@Configuration
+class AppConfig {
+
+    @Bean
+    fun transferService(): TransferService {
+        return TransferServiceImpl()
+    }
+}
+```
+
+**Bean依赖**
+
+```java
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public TransferService transferService(AccountRepository accountRepository) {
+        return new TransferServiceImpl(accountRepository);
+    }
+}
+```
+
+**接收生命周期回调**
+
+@Bean注释的类支持生命周期回调，可以使用JSR-250中的@PostConstruct和@PreDestroy
+
+ 还完全支持常规的Spring [生命周期](https://docs.spring.io/spring/docs/5.2.7.RELEASE/spring-framework-reference/core.html#beans-factory-nature)回调。如果bean实现`InitializingBean`，`DisposableBean`或`Lifecycle`，则容器将调用它们各自的方法
+
+ 也完全支持标准`*Aware`接口集（例如[BeanFactoryAware](https://docs.spring.io/spring/docs/5.2.7.RELEASE/spring-framework-reference/core.html#beans-beanfactory)， [BeanNameAware](https://docs.spring.io/spring/docs/5.2.7.RELEASE/spring-framework-reference/core.html#beans-factory-aware)， [MessageSourceAware](https://docs.spring.io/spring/docs/5.2.7.RELEASE/spring-framework-reference/core.html#context-functionality-messagesource)， [ApplicationContextAware](https://docs.spring.io/spring/docs/5.2.7.RELEASE/spring-framework-reference/core.html#beans-factory-aware)等)
+
+ 该`@Bean`注释支持指定任意初始化和销毁回调方法，就像Spring XML中的`init-method`和`destroy-method`属性的`bean`元素，如下面的示例所示： 
+
+```java
+public class BeanOne {
+
+    public void init() {
+        // initialization logic
+    }
+}
+
+public class BeanTwo {
+
+    public void cleanup() {
+        // destruction logic
+    }
+}
+
+@Configuration
+public class AppConfig {
+
+    @Bean(initMethod = "init")
+    public BeanOne beanOne() {
+        return new BeanOne();
+    }
+
+    @Bean(destroyMethod = "cleanup")
+    public BeanTwo beanTwo() {
+        return new BeanTwo();
+    }
+}
+```
+
+**指定Bean的范围**
+
+Spring包含@Scope注释，以便您可以指定bean的范围
+
+**使用@Scope注释**
+
+默认范围是singleton，但是可以使用@Scope覆盖它
+
+```java
+@Configuration
+public class MyConfiguration {
+
+    @Bean
+    @Scope("prototype")
+    public Encryptor encryptor() {
+        // ...
+    }
+}
+```
+
+**自定义Bean的名称**
+
+```java
+@Configuration
+public class AppConfig {
+
+    @Bean(name = "myThing")
+    public Thing thing() {
+        return new Thing();
+    }
+}
+```
+
+**Bean别名**
+
+ 有时希望为单个Bean提供多个名称，否则称为Bean别名。 为此`name`，`@Bean`注释的属性接受String数组。以下示例显示了如何为bean设置多个别名： 
+
+```java
+@Configuration
+public class AppConfig {
+
+    @Bean({"dataSource", "subsystemA-dataSource", "subsystemB-dataSource"})
+    public DataSource dataSource() {
+        // instantiate, configure and return DataSource bean...
+    }
+}
+```
+
+**Bean Description**
+
+```java
+@Configuration
+public class AppConfig {
+
+    @Bean
+    @Description("Provides a basic example of a bean")
+    public Thing thing() {
+        return new Thing();
+    }
+}
+```
+
