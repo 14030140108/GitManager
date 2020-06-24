@@ -159,10 +159,92 @@ private void doAcquireInterruptibly(int arg)
                 throw new InterruptedException();
         }
     } finally {
+        
+        
         if (failed)
             cancelAcquire(node);
     }
 }
+```
+
+### 1.2 Synchronized锁
+
+#### 1.2.1 锁升级
+
+```java
+1. 对象刚刚new出来时，为无锁状态  0 0 1
+2. 给对象上锁，没有出现竞争，此时为偏向锁 1 0 1，markword中会存储当前线程ID
+3. 当发生竞争之后，变为轻量级锁(竞争的过程：撤销偏向锁,每个线程有自己的锁记录LR，对象中的markword会记录抢到的线程对应的LR) 0 0
+4. 竞争加剧会自动升级为重量级锁(调用操作系统的函数，CPU会从用户态切换到内核态) 1 0 
+5. 1 1 GC标记信息
+```
+
+#### 1.2.2 锁消除
+
+```java
+public void add(String str1,String str2){
+    StringBuffer sb = new StringBuffer();
+    sb.append(str1).append(str2);
+}
+//StringBuffer是线程安全的，内部方法被synchronized修饰，但是当JVM检测到sb只在add方法中使用，不可能被其他线程引用(因为是局部变量，栈私有)，JVM会自动消除对象内部的锁
+```
+
+#### 1.2.3 锁粗化
+
+#### 1.2.4 Synchronized实现过程
+
+```java
+moniterenter moniterexit   -->  lock comxchg指令
+```
+
+### 1.3 volatile原理
+
+```java
+保证了内存模型的可见性和有序性，无法保证原子性
+```
+
+
+
+## 二、并发基础 知识
+
+### 2.1 线程状态
+
+```java
+NEW: 一个还没开始的线程处于这种状态
+RUNNABLE：一个正在执行的线程，当调用start函数之后的线程处于这种状态
+//waiting和blocked区别：blocked更像是被动的进入这种状态，waiting更像是自己主动进入这种状态
+//blocked是虚拟机认为程序还不能进入临界区，进去会有问题
+//Wait操作是已经进入了临界区，但是因为某些其他资源没有准备充足，自己就先等等
+BLOCKED：处于这个状态的线程一般是在等待获取监视器上的锁，通常由两种情况：一、执行synchronized方法等待监视器上的锁;二、调用object.wait方法之后被notify，等待重新获取synchronized上的锁
+WAITINT：一个线程等待另一个线程执行一个特殊的操作，例如：object.wait方法，join方法、park方法
+TIMED-WAITING：处于waiting状态，但最多waiting到指定的超时时间，例如：Thread.sleep,object.wait(time)
+TERMINATED：执行结束的线程处于这种状态
+```
+
+### 2.2 Thread.sleep与Object.wait方法有何区别
+
+```java
+1. sleep是Thread的静态方法，同时也是一个本地方法，wait方法是object上的final方法，不可被重写
+2. wait执行的时候需要获取到object的锁，sleep不需要
+```
+
+### 2.3 Java中线程间通信的方法
+
+```java
+1. 使用锁机制(Synchronized,ReentrantLock,ReentrantReadWriteLock)
+2. 条件变量机制：volatile变量，atomicInteger类的对象
+3. 基于锁机制衍生出的一些通信方式：基于Synchronized衍生的wait-notify机制，基于ReentrantLock衍生出的Condition.wait和signal机制
+4. JUC包下的一些工具类：CountDownLatch、CyclicBarrier、Semphore(这些底层都是基于AQS框架来实现的)
+```
+
+### 2.4  对象布局
+
+```java
+Object o = new Ojbcet();        //在内存中一共占16个字节
+// 对象头(markword)  8个字节,存储synchronized的信息
+// 类型指针  4个字节
+//实例数据
+//对齐(8的整数倍)
 ```
 
 
