@@ -92,3 +92,38 @@ public class Main {
  */
 ```
 
+### 四、Java中保留小数位数的方法
+
+```java
+// 参考链接: https://blog.csdn.net/well386/article/details/53945796
+// 1. 四舍五入
+double d = 114.145;
+d = (double) Math.round(d * 100) / 100;
+System.out.println(d);
+
+// 2. BigDecimal.ROUND_HALF_UP表示四舍五入，BigDecimal.ROUND_HALF_DOWN也是五舍六入，BigDecimal.ROUND_UP表示进位处理（就是直接加1），BigDecimal.ROUND_DOWN表示直接去掉尾数
+double d = 114.145;
+BigDecimal b = new BigDecimal(d);
+d = b.setScale(2, BigDecimal.ROUND_HALF_UP).doubleValue();        
+System.out.println(d);
+
+// 3. DecimalFormat
+double d = 114.145;
+DecimalFormat df = new DecimalFormat("#.00");
+String str = df.format(d);
+System.out.println(str);
+
+// 4. String.format
+double d = 114.145;
+String.format("%.2f", d);
+
+// 5. RoundingMode.HALF_DOWN表示 五舍六入，负数先取绝对值再五舍六入再负数，RoundingMode.HALF_UP:表示四舍五入，负数先取绝对值再五舍六入再负数
+double d = 114.145
+NumberFormat nf = NumberFormat.getNumberInstance();
+// 保留两位小数
+nf.setMaximumFractionDigits(2);
+// 如果不需要四舍五入，可以使用RoundingMode.DOWN
+nf.setRoundingMode(RoundingMode.UP);
+System.out.println(nf.format(d));
+```
+
