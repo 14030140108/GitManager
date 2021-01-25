@@ -1,0 +1,159 @@
+## 一、String.format的参数
+
+[详细内容，请点击](https://segmentfault.com/a/1190000019350486?utm_source=tag-newest)
+
+### 1.1 对基本数据类型进行格式化
+
+#### 1.1.1 “-”表示左对齐
+
+```java
+//“-6”表示长度最小为6，不够后面补空格
+System.out.print(String.format("%-6s", "1000"));
+System.out.print("]");
+//output: 
+1000  ]
+```
+
+#### 1.1.2 “+”表示给数字添加正负号
+
+#### 1.1.3 转换符
+
+![](D:\软件\typora\笔记\img\String的format中转换符表格.png)
+
+#### 1.1.4 转换符的标志
+
+![](D:\软件\typora\笔记\img\String的format中转换符标志表格.png)
+
+### 1.2 对日期时间进行格式化
+
+#### 1.2.1 日期转换符
+
+![](D:\软件\typora\笔记\img\日期转换符.png)
+
+#### 1.2.2 时间转换符
+
+![](D:\软件\typora\笔记\img\时间转换符.png)
+
+## 二、自定义Hbase过滤器
+
+[内容参考1](https://blog.csdn.net/b078109/article/details/101774152)
+
+[内容参考2](https://blog.csdn.net/weixin_42660202/article/details/81019849)
+
+[protobuf下载地址](https://pan.baidu.com/s/1qXP8Ts5XUP9ttkIdqYXA_w)
+
+[protoc-2.5.0-win32下载地址](https://pan.baidu.com/s/1A1E8mcnnJiOQ2MNHF0VpEA)
+
+### 2.1 使用protobuf生成数据交换的序列结构化数据格式
+
+![](D:\软件\typora\笔记\img\protobuf书写示例.png)
+
+### 2.2  使用proto.exe生成java文件
+
+` protoc.exe -I=C:/proto --java_out=C:/proto C:/proto/CustomNumberComparator.proto`
+
+### 2.3 自定义过滤器
+
+```java
+package com.wl.filter;
+
+import com.google.protobuf.InvalidProtocolBufferException;
+import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.exceptions.DeserializationException;
+import org.apache.hadoop.hbase.filter.Filter;
+import org.apache.hadoop.hbase.filter.FilterBase;
+import org.apache.hadoop.hbase.util.ByteStringer;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+
+public class CustomFilter extends FilterBase {
+
+    private byte[] value;
+    private List<String> rowKeys;
+    private boolean filterRow = true;
+
+    public CustomFilter(byte[] value) {
+        this.value = value;
+        String[] str = new String(value).split(",");
+        rowKeys = Arrays.asList(str);
+    }
+	
+    //过滤rowkey
+    @Override
+    public boolean filterRowKey(byte[] buffer, int offset, int length) throws IOException {
+        byte[] rowKey = Arrays.copyOfRange(buffer, offset, offset + length);
+        if (!rowKeys.contains(new String(rowKey)))
+            filterRow = false;
+        return filterRow;
+    }
+
+    @Override
+    public void reset() {
+        this.filterRow = true;
+    }
+
+    //查询每一行时调用，看是否需要过滤
+    @Override
+    public ReturnCode filterKeyValue(Cell ignored) throws IOException {
+        if (!filterRow)
+            return ReturnCode.INCLUDE;
+        else
+            return ReturnCode.NEXT_ROW;
+    }
+	
+    //序列化
+    @Override
+    public byte[] toByteArray(){
+        MyFilterProtos.CustomFilter.Builder builder = MyFilterProtos.CustomFilter.newBuilder();
+        if (value != null)
+            builder.setValue(ByteStringer.wrap(value));
+        return builder.build().toByteArray();
+    }
+
+    //反序列化
+    public static Filter parseFrom(final byte[] pbBytes) throws DeserializationException {
+        MyFilterProtos.CustomFilter proto;
+        try {
+            proto = MyFilterProtos.CustomFilter.parseFrom(pbBytes);
+        } catch (InvalidProtocolBufferException e) {
+            throw new DeserializationException(e);
+        }
+        return new CustomFilter(proto.getValue().toByteArray());
+    }
+}
+```
+
+### 2.4  打成jar包，放入hbase的lib目录下，重启hbase
+
+### 2.5 在idea工程中引用该jar包，并在代码中使用自定义过滤器
+
+```java
+	/**
+     * 给定RowKey的范围，在HBase上进行范围查询，并自定义过滤器过滤掉不满足条件的rowKey
+     *
+     * @param value           给定的查询区间
+     * @param queryArea       待查询区域坐标信息
+     * @param stCoderOperator 空间数据操作句柄
+     * @param results         查询结果集
+     * @throws IOException
+     */
+    private void queryData2(String[] value, CuboidNode queryArea, STCoderOperator stCoderOperator, List<Result> results) throws IOException {
+        int length = value[0].length();
+        if (value.length == 1) {
+            Result rs = getLineData(tableName, Bytes.toBytes(value[0]));
+            results.add(rs);
+        } else {
+            String str = String.format("%0" + length + "d", Integer.valueOf(Integer.toBinaryString(Integer.valueOf(value[1], 2) + 1)));
+            //Filter filter = new RowFilter(CompareFilter.CompareOp.EQUAL, new SubstringComparator("000100"));
+            byte[] filterRowkey = choosePrefix(value, queryArea, stCoderOperator);
+            Filter filter = new CustomFilter(filterRowkey);
+            Iterator<Result> rs = getMultiLineData(tableName, Bytes.toBytes(value[0]), Bytes.toBytes(str), filter).iterator();
+            while (rs.hasNext()) {
+                results.add(rs.next());
+            }
+        }
+    }
+```
+

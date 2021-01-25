@@ -1,0 +1,12 @@
+# 一、HBase
+
+## 1.1 Hbase的组成
+
+- Hbase有用户表和系统表组成
+- 一个表有多个region区域，一个region又包含多个列族，每个列族有唯一的store，每个store里面有一个memstore和多个Hfile文件，一个Hfile文件包含多个blocks，一个blocks包含多个cell
+- 用户表被分成了多个Region，每个Region有一个起始的key和结束的key来定义它的边界
+- HFile最终会被压缩成一个大文件，最后会存储在HDFS中
+
+## 1.2 HBase的基础
+
+- HBase是基于LSM树实现的，基本思想就是：将修改的数据保存在内存中，达到一定的大小限制后，将其刷入磁盘，极大的提高了HBase的写性能，但是在读取数据时，因为需要比对原始数据和内存中修改的数据，所以读性能比较慢
