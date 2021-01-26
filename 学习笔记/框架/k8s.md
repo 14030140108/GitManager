@@ -33,6 +33,10 @@
 
 # 2. 添加dashboard可以外部访问，增加一个proxy地址
  kubectl proxy --port=9001 --address='192.168.4.123' --accept-hosts='^.*' &    # 该命令中port为外部访问的端口，可以随意指定一个没有占用的端口，address为centos虚拟机的IP地址
+ 
+ 3. minikube dashboard
+(1) minikube dashboard
+(2) kubectl proxy --port=9001 --address='192.168.4.123' --accept-hosts='^.*' &  # 代理 192.168.4.123:9001运行集群外网访问
 ```
 
 ### 4. 测试minikube是否安装成功
@@ -46,6 +50,16 @@
 ```
 
 ## 二、istio的安装
+
+### 2. isito的组件
+
+```shell
+# 1. Jaeger : 链路追踪
+http://192.168.4.123:30034   # jaeger-query为NodePort类型，将30034转发到了80端口，并从80端口转发到pod的16686端口
+
+# 2. grafana 流量监控
+http://master:30001/
+```
 
 
 
