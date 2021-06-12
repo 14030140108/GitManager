@@ -24,6 +24,7 @@
 # 2. install minikube-linux-amd64 /usr/local/bin/minikube  安装minikube到bin目录
 
 # 3. minikube start --vm-driver=none --registry-mirror=https://registry.docker-cn.com  这一步骤比较慢
+minikube start --vm-driver=none --image-repository=registry.aliyuncs.com/google_containers
 ```
 
 ### 3. 安装minikube dashboard
@@ -33,10 +34,6 @@
 
 # 2. 添加dashboard可以外部访问，增加一个proxy地址
  kubectl proxy --port=9001 --address='192.168.4.123' --accept-hosts='^.*' &    # 该命令中port为外部访问的端口，可以随意指定一个没有占用的端口，address为centos虚拟机的IP地址
- 
- 3. minikube dashboard
-(1) minikube dashboard
-(2) kubectl proxy --port=9001 --address='192.168.4.123' --accept-hosts='^.*' &  # 代理 192.168.4.123:9001运行集群外网访问
 ```
 
 ### 4. 测试minikube是否安装成功
@@ -49,25 +46,7 @@
 # 3. http://192.168.4.123:port  可以看到tomcat的页面
 ```
 
-## 二、istio的安装
-
-### 2. isito的组件
-
-```shell
-# 1. Jaeger : 链路追踪
-http://192.168.4.123:30034   # jaeger-query为NodePort类型，将30034转发到了80端口，并从80端口转发到pod的16686端口
-
-# 2. grafana 流量监控
-http://master:30001/
-```
-
-
-
-
-
-
-
-## 三、k8s学习
+## 二、k8s学习
 
 ## 1. pod
 
@@ -86,11 +65,207 @@ http://master:30001/
 - Deployment(常用)
   - 支持滚动更新，回滚
 
-## 四、k8s命令
+## 3. service机制
+
+
+
+## 三、k8s命令
+
+### 1. k8s的常用命令
 
 ```shell
 # 运行一个指定的镜像，--expose会自动创建一个service，并暴露内部的9001端口，创建的pod为service1
 1. kubectl run service1 --image=service1:v1.0 --expose --port=9001
 
+# 运行yaml文件，并创建yaml文件中配置的组件
+2. kubectl create -f service.yaml
+
+# 更新yaml配置
+3. kubectl apply -f *.yaml
+
+# 查看组件中内容
+4. kubectl get deploy | pods | services  
+
+```
+
+### 2. 使用yaml文件创建service，deployment，pod
+
+```shell
+// 1.使用service.yaml文件创建两个service
+
+# 创建 service1
+apiVersion: v1
+kind: Service
+metadata:
+  name: service1-service
+  labels:
+    app: service1-service
+spec:
+  type: NodePort   # NodePort可以使集群外部用户访问
+  ports:
+    - port: 9001   # 暴露给集群内部访问的端口
+      targetPort: 9001   # pod内部监听的端口
+      nodePort：10001  # 暴露给集群外部访问的端口
+  selector:
+    app: service1-pod
+
+---
+
+# 创建 service2
+apiVersion: v1
+kind: Service
+metadata:
+  name: service2
+  labels:
+    app: service2-service
+spec:
+  ports:
+    - port: 9002
+      targetPort: 9002
+  selector:
+    app: service2-pod
+
+---
+
+# 创建deployment: service1-deploy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service1-deploy
+  namespace: default
+  labels:
+    app: service1-deploy
+    version: v1.0
+spec:
+  replicas: 3  # 创建3个pod副本
+  selector:
+    matchLabels: 
+      app: service1-pod
+  template:
+    metadata: 
+      labels:
+        app: service1-pod
+    spec:
+      containers:
+        - name: service1-pod
+          image: service1:v1.0
+          ports:
+            - containerPort: 9001
+
+---
+
+# 创建deployment: service2-deploy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service2-deploy
+  namespace: default
+  labels:
+    app: service2-deploy
+    version: v1.0
+spec:
+  replicas: 3
+  selector:
+    matchLabels: 
+      app: service2-pod
+  template:
+    metadata: 
+      labels:
+        app: service2-pod
+    spec:
+      containers:
+        - name: service2-pod
+          image: service2:v1.0
+          ports:
+            - containerPort: 9002
+
+# 创建pod: service1
+#apiVersion: v1
+#kind: Pod
+#metadata:
+#  name: service1-pod
+#  labels:
+#    app: service1
+#spec:
+#  containers:
+#    - name: service1-container
+#      image: service1:v1.0
+#      ports:
+#        - containerPort: 9001
+
+---
+
+# 创建pod: service2
+#apiVersion: v1
+#kind: Pod
+#metadata:
+#  name: service2-pod
+#  labels:
+#    app: service2
+#spec:
+#  containers:
+#    - name: service2-container
+#      image: service2:v1.0
+#      ports:
+#        - containerPort: 9002
+```
+
+# istio
+
+## 一、istio的安装
+
+## 二、istio ingress-gateway
+
+### 1. 创建gateway.yaml
+
+```shell
+# 创建网关，统一流量入口
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: service-gateway
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:          # 接收url中header的hosts为匹配所有
+        - "*"  
+```
+
+### 2. 创建virtualService.yaml
+
+```shell
+# 该配置为gateway的路由规则
+# 创建virtualService
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: service-vrsvc
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - service-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /service1/hello
+      route:
+        - destination:
+            port:
+              number: 9001
+            host: service1-service
+    - match:
+        - uri:
+            prefix: /service2/hello
+      route:
+        - destination:
+            port:
+              number: 9002
+            host: service2-service 
 ```
 
